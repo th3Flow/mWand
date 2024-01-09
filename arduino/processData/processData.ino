@@ -30,13 +30,14 @@
 #include <tensorflow/lite/schema/schema_generated.h>
 
 #include "model.h"
+#include "model_params.h"
 
 // IMU SETTINGS //
 const float ACCEL_SCALE_FACTOR = 9.81;/* Your accelerometer scale factor */
 const float GRAVITY = 9.81;
 const int SAMPLE_RATE = 119; // Sample rate in Hz
 
-const float accelerationThreshold = 3; // threshold of significant in m/s²
+const float accelerationThreshold = 2; // threshold of significant in m/s²
 const int numSamples = 119;
 // +++++++++++++++++++++++ //
 
@@ -48,8 +49,11 @@ float x = 0, y = 0, z = 0;
 const float GYRO_THRESHOLD = 0.02;
 const float ACC_Treshold = 0.0; //* ACCEL_SCALE_FACTOR;
 
+const int NUMDATA = 9;
 float   data[12];
-int8_t  int8_data[12];
+float   dataTf[NUMDATA];
+int8_t  int8_data[NUMDATA];
+
 int samplesRead = 0;
 
 enum State 
@@ -97,10 +101,7 @@ TfLiteTensor* tflOutputTensor = nullptr;
 // be adjusted based on the model you are using
 constexpr int tensorArenaSize = 8 * 1024;
 byte tensorArena[tensorArenaSize] __attribute__((aligned(16)));
-float inverse_input_scale = 0.0f;
-float input_zero_point = 0.0f;
-float output_scale = 0.0f;
-float output_zero_point = 0.0f;
+
 // array to map gesture index to a name
 const char* GESTURES[] = 
 {
@@ -144,11 +145,7 @@ void setup()
     // Get pointers for the model's input and output tensors
     tflInputTensor = tflInterpreter->input(0);
     tflOutputTensor = tflInterpreter->output(0);
-
-    inverse_input_scale = 1 / tflInputTensor->params.scale; // avoid division by inverting here
-	  input_zero_point = tflInputTensor->params.zero_point;
-	  output_scale = tflOutputTensor->params.scale;
-	  output_zero_point = tflOutputTensor->params.zero_point;
+    Serial.println("TensorFlow SET");
 }
 
 void loop() 
@@ -162,7 +159,7 @@ void loop()
         processIMU(data, deltaTime);    
         aSum = fabs(data[0]) + fabs(data[1]) + fabs(data[2]);
 
-        data[0] = normalize_range(data[0], -4, 4);
+        /*data[0] = normalize_range(data[0], -4, 4);
         data[1] = normalize_range(data[1], -4, 4);
         data[2] = normalize_range(data[2], -4, 4);
 
@@ -174,14 +171,26 @@ void loop()
         data[7] = normalize_range(data[7], 0, 360);
         data[8] = normalize_range(data[8], 0, 360);
 
-        data[9] = normalize_range(data[9], -0.5, 0.5);
-        data[10] = normalize_range(data[10], -0.5, 0.5);
-        data[11] = normalize_range(data[11], -0.5, 0.5);
+        data[9] = normalize_range(data[9], -0.25, 0.25);
+        data[10] = normalize_range(data[10], -0.25, 0.25);
+        data[11] = normalize_range(data[11], -0.25, 0.25);*/
+
+        dataTf[0] = normalize_range(data[0], -4, 4);
+        dataTf[1] = normalize_range(data[1], -4, 4);
+        dataTf[2] = normalize_range(data[2], -4, 4);
+
+        dataTf[3] = normalize_range(data[6], 0, 360);
+        dataTf[4] = normalize_range(data[7], 0, 360);
+        dataTf[5] = normalize_range(data[8], 0, 360);
+
+        dataTf[6] = normalize_range(data[9], -0.25, 0.25);
+        dataTf[7] = normalize_range(data[10], -0.25, 0.25);
+        dataTf[8] = normalize_range(data[11], -0.25, 0.25);
 
         // CONVERSION
-        for (int n = 0; n < 12; n++)
+        for (int n = 0; n < NUMDATA; n++) 
         {
-          int8_data[n] = (int8_t)(data[n] * 255.0) - 128;
+            int8_data[n] = static_cast<int8_t>((dataTf[n] / input_scale) + input_zero_point);
         }
 
         switch(currentState)
@@ -191,9 +200,9 @@ void loop()
             if (aSum >= accelerationThreshold) 
             {
                 currentState = GATHER;             
-                for (int i = 0; i < 12; i++)
+                for (int i = 0; i < NUMDATA; i++)
                 {
-                    tflInputTensor->data.int8[samplesRead * 12 + i] = int8_data[i];
+                    tflInputTensor->data.int8[samplesRead * NUMDATA + i] = int8_data[i];
                 }          
 
                 samplesRead++;
@@ -209,9 +218,9 @@ void loop()
 
           case GATHER:
 
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < NUMDATA; i++)
             {
-                tflInputTensor->data.int8[samplesRead * 12 + i] = int8_data[i];
+                tflInputTensor->data.int8[samplesRead * NUMDATA + i] = int8_data[i];
             }          
 
             samplesRead++;
@@ -228,11 +237,11 @@ void loop()
 
                 for (int i = 0; i < NUM_GESTURES; i++) 
                 {
-                  int8_t score = tflOutputTensor->data.int8[i];
-                  Serial.print(GESTURES[i]);
-                  Serial.print(": ");
-                  Serial.print((score - output_zero_point) * output_scale * 100.0f, 2);
-		              Serial.println(" %");
+                    int8_t score = tflOutputTensor->data.int8[i];
+                    Serial.print(GESTURES[i]);
+                    Serial.print(": ");
+                    Serial.print((score - output_zero_point) * output_scale * 100.0f, 2);
+                    Serial.println(" %");
                 }
                 Serial.println();
 
@@ -264,9 +273,9 @@ void processIMU(float *data, float deltaTime)
     data[2] = data[2] * ACCEL_SCALE_FACTOR;*/
 
     // TRY TO denoise accelerometer data
-    ax = lowPassFilter(data[0], lastAx, 0.85);
-    ay = lowPassFilter(data[1], lastAy, 0.85);
-    az = lowPassFilter(data[2], lastAz, 0.85);
+    ax = lowPassFilter(data[0], lastAx, 0.5);
+    ay = lowPassFilter(data[1], lastAy, 0.5);
+    az = lowPassFilter(data[2], lastAz, 0.5);
 
     data[0] = ax;
     data[1] = ay;
