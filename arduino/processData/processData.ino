@@ -146,6 +146,7 @@ void setup()
     tflInputTensor = tflInterpreter->input(0);
     tflOutputTensor = tflInterpreter->output(0);
     Serial.println("TensorFlow SET");
+    Serial.println("CAST A NEW SPELL --->");
 }
 
 void loop() 
@@ -250,6 +251,9 @@ void loop()
                 vx = 0, vy = 0, vz = 0;
                 x = 0, y = 0, z = 0;
                 currentState = IDLE;
+
+                delay(10);
+                Serial.println("CAST A NEW SPELL --->");
             }
             break;
         }
