@@ -37,7 +37,7 @@ const float ACCEL_SCALE_FACTOR = 9.81;/* Your accelerometer scale factor */
 const float GRAVITY = 9.81;
 const int SAMPLE_RATE = 119; // Sample rate in Hz
 
-const float accelerationThreshold = 2; // threshold of significant in m/s²
+const float accelerationThreshold = 3; // threshold of significant in m/s²
 const int numSamples = 119;
 // +++++++++++++++++++++++ //
 
