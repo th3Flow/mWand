@@ -297,7 +297,9 @@ np.save('sets/X_test.npy', X_test)
 np.save('sets/y_train.npy', y_train)
 np.save('sets/y_test.npy', y_test)
 
-"""# Setting the structure of the Neural Network
+"""In order to replace the training and test datasets properly, just replace X_train, X_test, y_train and y_test. Therefor the function load_dataset can be run again to generate another set of X_train, X_test, y_train as well as y_test to be used again in the collab
+
+# Setting the structure of the Neural Network
 
 * Activation Function: A LeakyReLU activation function with a 0.1 negative slope is employed. This function helps to address the issue of "dying neurons" in the network.
 "Dying neurons" in neural networks using ReLU activation functions occur when neurons stop learning and only output zeros, becoming inactive due to consistently negative input weights leading to zero gradients during backpropagation.
@@ -371,6 +373,24 @@ model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["ac
 train_start = time.time()
 model.fit(X_train, y_train, epochs=epochs, validation_split=0.0, batch_size=8, verbose=1)
 results["Training time GPU"] = f"{(time.time() - train_start):.2f} s"
+
+"""# Used FLOPS"""
+
+total_flops = 0
+for layer in model.layers:
+    if type(layer) == tf.keras.layers.Dense:
+        input_shape = layer.input_shape
+        output_shape = layer.output_shape
+        if not layer.use_bias:
+            # 2 * input_units * output_units for multiply-add operations
+            flops = 2 * input_shape[1] * output_shape[1]
+        else:
+            # Add operations for bias
+            flops = (2 * input_shape[1] + 1) * output_shape[1]
+
+        total_flops += flops
+
+print(f"Total FLOPS: {total_flops}")
 
 """# Convert calculated Model to TensorFlowLite
 
